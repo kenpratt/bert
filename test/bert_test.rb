@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 require 'test_helper'
 
 class BertTest < Test::Unit::TestCase
@@ -51,6 +52,9 @@ class BertTest < Test::Unit::TestCase
       dd << :false
       dd << :nil
 
+      dd << "foo"
+      dd << "foo’"
+
       dd.each do |d|
         if d.kind_of? String
           assert_equal to_bytes(d), to_bytes(BERT.decode(BERT.encode(d)))
@@ -69,5 +73,27 @@ class BertTest < Test::Unit::TestCase
     #   ruby3 = BERT.decode(bert2)
     #   p ruby3
     # end
+  end
+
+  context "BERT with non-ASCII strings" do
+    setup do
+      @ruby = t[:user, {:name => "foo’"}]
+      @bert = "\203h\002d\000\004userh\003d\000\004bertd\000\004dictl\000\000\000\001h\002d\000\004namem\000\000\000\006foo’j"
+      @ebin = "<<131,104,2,100,0,4,117,115,101,114,104,3,100,0,4,98,101,114,116,100,0,4,100,105,99,116,108,0,0,0,1,104,2,100,0,4,110,97,109,101,109,0,0,0,6,102,111,111,226,128,153,106>>"
+    end
+
+    should "encode" do
+      assert_equal to_bytes(@bert), to_bytes(BERT.encode(@ruby))
+    end
+
+    should "decode" do
+      # TODO Strings are decoded as raw bytes, so they pass byte
+      # comparison, but not direct comparison in a nested structure
+      assert_equal @ruby, BERT.decode(@bert)
+    end
+
+    should "ebin" do
+      assert_equal @ebin, BERT.ebin(@bert)
+    end
   end
 end
