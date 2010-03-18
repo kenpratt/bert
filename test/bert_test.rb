@@ -89,7 +89,7 @@ class BertTest < Test::Unit::TestCase
     should "decode" do
       # TODO Strings are decoded as raw bytes, so they pass byte
       # comparison, but not direct comparison in a nested structure
-      assert_equal @ruby, BERT.decode(@bert)
+      assert_equal @ruby, BERT.decode(@bert, 'utf-8')
     end
 
     should "ebin" do

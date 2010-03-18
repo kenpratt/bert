@@ -4,8 +4,8 @@ module BERT
     #   +bert+ is the BERT String
     #
     # Returns a Ruby object
-    def self.decode(bert)
-      Decode.decode(bert)
+    def self.decode(bert, force_to_encoding=nil)
+      Decode.decode(bert, force_to_encoding)
     end
   end
 end

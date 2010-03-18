@@ -20,9 +20,11 @@ static VALUE cDecode;
 static VALUE cTuple;
 void Init_decode();
 
-VALUE method_decode(VALUE klass, VALUE rString);
+VALUE method_decode(int argc, VALUE *argv, VALUE self);
 
-VALUE read_any_raw(unsigned char **pData);
+VALUE read_any_raw(unsigned char **pData, VALUE forceToEncoding);
+
+VALUE force_encoding(VALUE str, VALUE forceToEncoding);
 
 // printers
 
@@ -76,9 +78,9 @@ unsigned int read_4(unsigned char **pData) {
 
 // tuples
 
-VALUE read_tuple(unsigned char **pData, unsigned int arity);
+VALUE read_tuple(unsigned char **pData, unsigned int arity, VALUE forceToEncoding);
 
-VALUE read_dict_pair(unsigned char **pData) {
+VALUE read_dict_pair(unsigned char **pData, VALUE forceToEncoding) {
   if(read_1(pData) != ERL_SMALL_TUPLE) {
     rb_raise(rb_eStandardError, "Invalid dict pair, not a small tuple");
   }
@@ -89,10 +91,10 @@ VALUE read_dict_pair(unsigned char **pData) {
     rb_raise(rb_eStandardError, "Invalid dict pair, not a 2-tuple");
   }
 
-  return read_tuple(pData, arity);
+  return read_tuple(pData, arity, forceToEncoding);
 }
 
-VALUE read_dict(unsigned char **pData) {
+VALUE read_dict(unsigned char **pData, VALUE forceToEncoding) {
   int type = read_1(pData);
   if(!(type == ERL_LIST || type == ERL_NIL)) {
     rb_raise(rb_eStandardError, "Invalid dict spec, not an erlang list");
@@ -108,7 +110,7 @@ VALUE read_dict(unsigned char **pData) {
 
   int i;
   for(i = 0; i < length; ++i) {
-    VALUE pair = read_dict_pair(pData);
+    VALUE pair = read_dict_pair(pData, forceToEncoding);
     VALUE first = rb_ary_entry(pair, 0);
     VALUE last = rb_ary_entry(pair, 1);
     rb_funcall(hash, rb_intern("store"), 2, first, last);
@@ -121,8 +123,8 @@ VALUE read_dict(unsigned char **pData) {
   return hash;
 }
 
-VALUE read_complex_type(unsigned char **pData, int arity) {
-  VALUE type = read_any_raw(pData);
+VALUE read_complex_type(unsigned char **pData, int arity, VALUE forceToEncoding) {
+  VALUE type = read_any_raw(pData, forceToEncoding);
   ID id = SYM2ID(type);
   if(id == rb_intern("nil")) {
     return Qnil;
@@ -131,15 +133,15 @@ VALUE read_complex_type(unsigned char **pData, int arity) {
   } else if(id == rb_intern("false")) {
     return Qfalse;
   } else if(id == rb_intern("time")) {
-    VALUE megasecs = read_any_raw(pData);
+    VALUE megasecs = read_any_raw(pData, forceToEncoding);
     VALUE msecs = rb_funcall(megasecs, rb_intern("*"), 1, INT2NUM(1000000));
-    VALUE secs = read_any_raw(pData);
-    VALUE microsecs = read_any_raw(pData);
+    VALUE secs = read_any_raw(pData, forceToEncoding);
+    VALUE microsecs = read_any_raw(pData, forceToEncoding);
     VALUE stamp = rb_funcall(msecs, rb_intern("+"), 1, secs);
     return rb_funcall(rb_cTime, rb_intern("at"), 2, stamp, microsecs);
   } else if(id == rb_intern("regex")) {
-    VALUE source = read_any_raw(pData);
-    VALUE opts = read_any_raw(pData);
+    VALUE source = read_any_raw(pData, forceToEncoding);
+    VALUE opts = read_any_raw(pData, forceToEncoding);
     int flags = 0;
     if(rb_ary_includes(opts, ID2SYM(rb_intern("caseless"))))
       flags = flags | 1;
@@ -149,23 +151,23 @@ VALUE read_complex_type(unsigned char **pData, int arity) {
       flags = flags | 4;
     return rb_funcall(rb_cRegexp, rb_intern("new"), 2, source, INT2NUM(flags));
   } else if(id == rb_intern("dict")) {
-    return read_dict(pData);
+    return read_dict(pData, forceToEncoding);
   } else {
     return Qnil;
   }
 }
 
-VALUE read_tuple(unsigned char **pData, unsigned int arity) {
+VALUE read_tuple(unsigned char **pData, unsigned int arity, VALUE forceToEncoding) {
   if(arity > 0) {
-    VALUE tag = read_any_raw(pData);
+    VALUE tag = read_any_raw(pData, forceToEncoding);
     if(SYM2ID(tag) == rb_intern("bert")) {
-      return read_complex_type(pData, arity);
+      return read_complex_type(pData, arity, forceToEncoding);
     } else {
       VALUE tuple = rb_funcall(cTuple, rb_intern("new"), 1, INT2NUM(arity));
       rb_ary_store(tuple, 0, tag);
       int i;
       for(i = 1; i < arity; ++i) {
-        rb_ary_store(tuple, i, read_any_raw(pData));
+        rb_ary_store(tuple, i, read_any_raw(pData, forceToEncoding));
       }
       return tuple;
     }
@@ -174,27 +176,27 @@ VALUE read_tuple(unsigned char **pData, unsigned int arity) {
   }
 }
 
-VALUE read_small_tuple(unsigned char **pData) {
+VALUE read_small_tuple(unsigned char **pData, VALUE forceToEncoding) {
   if(read_1(pData) != ERL_SMALL_TUPLE) {
     rb_raise(rb_eStandardError, "Invalid Type, not a small tuple");
   }
 
   int arity = read_1(pData);
-  return read_tuple(pData, arity);
+  return read_tuple(pData, arity, forceToEncoding);
 }
 
-VALUE read_large_tuple(unsigned char **pData) {
+VALUE read_large_tuple(unsigned char **pData, VALUE forceToEncoding) {
   if(read_1(pData) != ERL_LARGE_TUPLE) {
     rb_raise(rb_eStandardError, "Invalid Type, not a large tuple");
   }
 
   unsigned int arity = read_4(pData);
-  return read_tuple(pData, arity);
+  return read_tuple(pData, arity, forceToEncoding);
 }
 
 // lists
 
-VALUE read_list(unsigned char **pData) {
+VALUE read_list(unsigned char **pData, VALUE forceToEncoding) {
   if(read_1(pData) != ERL_LIST) {
     rb_raise(rb_eStandardError, "Invalid Type, not an erlang list");
   }
@@ -205,7 +207,7 @@ VALUE read_list(unsigned char **pData) {
 
   int i;
   for(i = 0; i < size; ++i) {
-    rb_ary_store(array, i, read_any_raw(pData));
+    rb_ary_store(array, i, read_any_raw(pData, forceToEncoding));
   }
 
   read_1(pData);
@@ -221,7 +223,7 @@ void read_string_raw(unsigned char *dest, unsigned char **pData, unsigned int le
   *pData += length;
 }
 
-VALUE read_bin(unsigned char **pData) {
+VALUE read_bin(unsigned char **pData, VALUE forceToEncoding) {
   if(read_1(pData) != ERL_BIN) {
     rb_raise(rb_eStandardError, "Invalid Type, not an erlang binary");
   }
@@ -231,10 +233,10 @@ VALUE read_bin(unsigned char **pData) {
   VALUE rStr = rb_str_new((char *) *pData, length);
   *pData += length;
 
-  return rStr;
+  return force_encoding(rStr, forceToEncoding);
 }
 
-VALUE read_string(unsigned char **pData) {
+VALUE read_string(unsigned char **pData, VALUE forceToEncoding) {
   if(read_1(pData) != ERL_STRING) {
     rb_raise(rb_eStandardError, "Invalid Type, not an erlang string");
   }
@@ -248,7 +250,7 @@ VALUE read_string(unsigned char **pData) {
     *pData += 1;
   }
 
-  return array;
+  return force_encoding(array, forceToEncoding);
 }
 
 VALUE read_atom(unsigned char **pData) {
@@ -370,7 +372,7 @@ VALUE read_nil(unsigned char **pData) {
 
 // read_any_raw
 
-VALUE read_any_raw(unsigned char **pData) {
+VALUE read_any_raw(unsigned char **pData, VALUE forceToEncoding) {
   switch(peek_1(pData)) {
     case ERL_SMALL_INT:
       return read_small_int(pData);
@@ -385,22 +387,22 @@ VALUE read_any_raw(unsigned char **pData) {
       return read_atom(pData);
       break;
     case ERL_SMALL_TUPLE:
-      return read_small_tuple(pData);
+      return read_small_tuple(pData, forceToEncoding);
       break;
     case ERL_LARGE_TUPLE:
-      return read_large_tuple(pData);
+      return read_large_tuple(pData, forceToEncoding);
       break;
     case ERL_NIL:
       return read_nil(pData);
       break;
     case ERL_STRING:
-      return read_string(pData);
+      return read_string(pData, forceToEncoding);
       break;
     case ERL_LIST:
-      return read_list(pData);
+      return read_list(pData, forceToEncoding);
       break;
     case ERL_BIN:
-      return read_bin(pData);
+      return read_bin(pData, forceToEncoding);
       break;
     case ERL_SMALL_BIGNUM:
       return read_small_bignum(pData);
@@ -412,7 +414,18 @@ VALUE read_any_raw(unsigned char **pData) {
   return Qnil;
 }
 
-VALUE method_decode(VALUE klass, VALUE rString) {
+VALUE force_encoding(VALUE str, VALUE forceToEncoding) {
+  if (forceToEncoding != Qnil) {
+    rb_funcall(mBERT, rb_intern("force_encoding"), 2, str, forceToEncoding);
+  }
+  return str;
+}
+
+VALUE method_decode(int argc, VALUE *argv, VALUE self) {
+  VALUE rString = Qnil;
+  VALUE forceToEncoding = Qnil;
+  rb_scan_args(argc, argv, "11", &rString, &forceToEncoding);
+
   unsigned char *data = (unsigned char *) StringValuePtr(rString);
 
   unsigned char **pData = &data;
@@ -422,7 +435,7 @@ VALUE method_decode(VALUE klass, VALUE rString) {
     rb_raise(rb_eStandardError, "Bad Magic");
   }
 
-  return read_any_raw(pData);
+  return read_any_raw(pData, forceToEncoding);
 }
 
 VALUE method_impl(VALUE klass) {
@@ -433,6 +446,6 @@ void Init_decode() {
   mBERT = rb_const_get(rb_cObject, rb_intern("BERT"));
   cDecode = rb_define_class_under(mBERT, "Decode", rb_cObject);
   cTuple = rb_const_get(mBERT, rb_intern("Tuple"));
-  rb_define_singleton_method(cDecode, "decode", method_decode, 1);
+  rb_define_singleton_method(cDecode, "decode", method_decode, -1);
   rb_define_singleton_method(cDecode, "impl", method_impl, 0);
 }

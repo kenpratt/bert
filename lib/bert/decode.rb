@@ -7,13 +7,14 @@ module BERT
       'Ruby'
     end
 
-    def self.decode(string)
-      new(StringIO.new(string)).read_any
+    def self.decode(string, force_to_encoding=nil)
+      new(StringIO.new(string), force_to_encoding).read_any
     end
 
-    def initialize(ins)
+    def initialize(ins, force_to_encoding=nil)
       @in = ins
       @peeked = ""
+      @force_to_encoding = force_to_encoding
     end
 
     def read_any
@@ -32,9 +33,9 @@ module BERT
         when SMALL_TUPLE then read_small_tuple
         when LARGE_TUPLE then read_large_tuple
         when NIL then read_nil
-        when STRING then read_erl_string
+        when STRING then force_encoding(read_erl_string)
         when LIST then read_list
-        when BIN then read_bin
+        when BIN then force_encoding(read_bin)
         else
           fail("Unknown term tag: #{peek_1}")
       end
@@ -253,6 +254,10 @@ module BERT
       else
         value
       end
+    end
+
+    def force_encoding(str)
+      BERT.force_encoding(str, @force_to_encoding)
     end
   end
 end
