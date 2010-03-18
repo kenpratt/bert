@@ -10,7 +10,7 @@ class BertTest < Test::Unit::TestCase
     end
 
     should "encode" do
-      assert_equal @bert, BERT.encode(@ruby)
+      assert_equal to_bytes(@bert), to_bytes(BERT.encode(@ruby))
     end
 
     should "decode" do
@@ -52,7 +52,11 @@ class BertTest < Test::Unit::TestCase
       dd << :nil
 
       dd.each do |d|
-        assert_equal d, BERT.decode(BERT.encode(d))
+        if d.kind_of? String
+          assert_equal to_bytes(d), to_bytes(BERT.decode(BERT.encode(d)))
+        else
+          assert_equal d, BERT.decode(BERT.encode(d))
+        end
       end
     end
 
