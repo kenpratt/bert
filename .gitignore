@@ -6,3 +6,4 @@ pkg
 ext/bert/c/Makefile
 ext/bert/c/*.bundle
 ext/bert/c/*.o
+ext/bert/c/*.so
